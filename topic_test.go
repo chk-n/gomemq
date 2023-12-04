@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chk-n/dash/pkg/retry"
+	"github.com/chk-n/retry"
 )
 
 func TestTopicAll(t *testing.T) {
