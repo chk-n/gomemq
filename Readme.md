@@ -11,10 +11,10 @@
 ```go
 
 cfg := gomemq.Config{
-  // timeout duratio
+  // timeout duration
   // retry count
   // memory consumption
-  // goroutine count
+  // concurrency
 }
 mq := memq.New(cfg)
 
@@ -27,16 +27,16 @@ t,_ := mq.Topic(cfgTopic)
 // publish to topic
 var msg []byte
 t.Publish("", msg)
-// handle error
 
 // subscribe to topic
 t.Subscribe(func(b []byte) error {
   // handle message asychnronously
 })
 
-
 // join a topic
 t,_ = mq.Join("")
+
+// Its also possible to publish directly through mq
 
 // publish through mq
 mq.Publish("", msg)
@@ -45,6 +45,3 @@ mq.Subscribe("", func(b []byte) error {
   // handle message asynchronously
 })
 ```
-
-
-Note: This has no afiliation to pinterest's MemQ.
