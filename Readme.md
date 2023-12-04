@@ -11,7 +11,7 @@
 ```go
 
 cfg := gomemq.Config{
-  // timeout duration
+  // timeout
   // retry count
   // memory consumption
   // concurrency
@@ -20,7 +20,7 @@ mq := memq.New(cfg)
 
 // create topic
 cfgTopic := gomemq.ConfigTopic{
-  
+  // topic configurations
 }
 t,_ := mq.Topic(cfgTopic)
 
@@ -36,7 +36,7 @@ t.Subscribe(func(b []byte) error {
 // join a topic
 t,_ = mq.Join("")
 
-// Its also possible to publish directly through mq
+// It is also possible to publish directly through mq
 
 // publish through mq
 mq.Publish("", msg)
