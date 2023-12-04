@@ -2,13 +2,10 @@ package gomemq
 
 import (
 	"fmt"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 
-	// "sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -32,9 +29,9 @@ type ringBufferPopBenchCase struct {
 	setup    func(r *RingBuffer)
 }
 
-var (
-	r = rand.New(rand.NewSource(1))
-)
+// var (
+// 	r = rand.New(rand.NewSource(1))
+// )
 
 func TestRingBufferInit(t *testing.T) {
 	_, err := NewRingBuffer(0)
@@ -453,7 +450,7 @@ func BenchmarkPop(b *testing.B) {
 	}
 }
 
-func waitRandomTime(min, max int) {
-	duration := time.Duration(r.Intn(max-min)+min) * time.Millisecond
-	time.Sleep(duration)
-}
+// func waitRandomTime(min, max int) {
+// 	duration := time.Duration(r.Intn(max-min)+min) * time.Millisecond
+// 	time.Sleep(duration)
+// }

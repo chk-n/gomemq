@@ -32,7 +32,7 @@ func (t *topicAll) manage() {
 	sem := make(chan interface{}, t.cfg.MaxConcurrentMessages)
 	for {
 		msgs := t.rb.PopN(math.MaxInt64)
-		if msgs == nil || len(msgs) == 0 {
+		if len(msgs) == 0 {
 			continue
 		}
 

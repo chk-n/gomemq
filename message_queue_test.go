@@ -5,11 +5,11 @@ import (
 )
 
 func TestMessageQueue(t *testing.T) {
-	cases := []struct {
-		name           string
-		operation      func(mq *messageQueue) [][]byte
-		expectedReturn [][]byte
-	}{}
+	// cases := []struct {
+	// 	name           string
+	// 	operation      func(mq *messageQueue) [][]byte
+	// 	expectedReturn [][]byte
+	// }{}
 }
 
 func BenchmarkPublish(b *testing.B) {
