@@ -1,6 +1,6 @@
 # Gomemq
 
-Lightweight and concurrent message queue written in golang with zero third-party dependencies*
+Lightweight and concurrent in-memory message queue written in golang with zero third-party dependencies*
 
 
 \*Excluding packages used for tests
