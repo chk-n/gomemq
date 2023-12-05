@@ -94,8 +94,12 @@ func (r *RingBuffer) Pop() []byte {
 
 	r.bLock.Lock()
 	defer r.bLock.Unlock()
+
 	prev := r.h.Swap((r.h.Load() + 1) & (r.Cap() - 1))
-	return (*r.buf())[prev]
+	v := (*r.buf())[prev]
+
+	return makeCopy[byte](v)
+
 }
 
 func (r *RingBuffer) PopN(n uint64) [][]byte {
@@ -117,17 +121,21 @@ func (r *RingBuffer) PopN(n uint64) [][]byte {
 		} else {
 			r.h.Add(n)
 		}
-		return (*r.buf())[h:n]
+		v := (*r.buf())[h:n]
+		return makeCopy[[]byte](v)
 	}
 	if n >= l {
 		// entire buffer will be popped
 		r.h.Swap(0)
 		r.t.Swap(0)
-		return append((*r.buf())[h:c], (*r.buf())[0:t]...)
+		v := append((*r.buf())[h:c], (*r.buf())[0:t]...)
+		return makeCopy[[]byte](v)
 	}
 	r.h.Add(n)
 	n -= c - h
-	return append((*r.buf())[h:c-1], (*r.buf())[0:t-n-1]...)
+
+	v := append((*r.buf())[h:c-1], (*r.buf())[0:t-n-1]...)
+	return makeCopy[[]byte](v)
 }
 
 // Returns entire unordered buffer including empty fields.

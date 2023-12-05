@@ -16,3 +16,9 @@ func selectTopic(r retrier, cfg ConfigTopic) topic {
 func getHandlerPointer(m MessageHandler) string {
 	return fmt.Sprintf("%d", reflect.ValueOf(m).Pointer())
 }
+
+func makeCopy[T any](s []T) []T {
+	new := make([]T, len(s))
+	copy(new, s)
+	return new
+}
