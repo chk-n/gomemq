@@ -14,16 +14,15 @@ Lightweight and concurrent in-memory message queue written in golang with zero t
 ```go
 
 cfg := gomemq.Config{
-  // timeout
-  // retry count
-  // memory consumption
-  // concurrency
+  // retrier
 }
 mq := memq.New(cfg)
 
 // create topic
 cfgTopic := gomemq.ConfigTopic{
-  // topic configurations
+  // memory consumption
+  // concurrency control
+  // other topic configurations
 }
 t,_ := mq.Topic(cfgTopic)
 
