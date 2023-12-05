@@ -4,7 +4,7 @@
 
 ## Get
 
-`go get github.com/chk-n/dash/pkg/gomemq`
+`go get github.com/chk-n/gomemq`
 
 ## Example
 
