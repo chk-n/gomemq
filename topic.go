@@ -10,7 +10,7 @@ type topicAll struct {
 	subs   map[string]interface{}
 	hs     []MessageHandler
 	hsLock sync.RWMutex
-	rb     *RingBuffer
+	rb     *RingBuffer[[]byte]
 	// dead letter queue contains failed messages
 	dlq     []dlq
 	dlqLock sync.RWMutex
@@ -18,7 +18,7 @@ type topicAll struct {
 }
 
 func newTopicAll(retry retrier, cfg ConfigTopic) *topicAll {
-	rb, _ := NewRingBuffer(1_024)
+	rb, _ := NewRingBuffer[[]byte](1_024)
 	return &topicAll{
 		cfg:   cfg,
 		rb:    rb,

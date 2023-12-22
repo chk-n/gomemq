@@ -13,7 +13,7 @@ import (
 type ringBufferTestCase struct {
 	name             string
 	capacity         uint64
-	operation        func(r *RingBuffer) [][]byte
+	operation        func(r *RingBuffer[[]byte]) [][]byte
 	concurrent       bool
 	expectedState    [][]byte
 	expectedReturn   [][]byte
@@ -26,7 +26,7 @@ type ringBufferTestCase struct {
 type ringBufferPopBenchCase struct {
 	name     string
 	capacity uint64
-	setup    func(r *RingBuffer)
+	setup    func(r *RingBuffer[[]byte])
 }
 
 // var (
@@ -34,16 +34,16 @@ type ringBufferPopBenchCase struct {
 // )
 
 func TestRingBufferInit(t *testing.T) {
-	_, err := NewRingBuffer(0)
+	_, err := NewRingBuffer[[]byte](0)
 	assert.Error(t, err)
 
-	_, err = NewRingBuffer(1)
+	_, err = NewRingBuffer[[]byte](1)
 	assert.Error(t, err)
 
-	_, err = NewRingBuffer(2)
+	_, err = NewRingBuffer[[]byte](2)
 	assert.NoError(t, err)
 
-	_, err = NewRingBuffer(6)
+	_, err = NewRingBuffer[[]byte](6)
 	assert.Error(t, err)
 
 }
@@ -53,7 +53,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "put_one",
 			capacity: 2,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				return nil
 			},
@@ -66,7 +66,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "put_many",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				return nil
@@ -80,7 +80,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "put_more_than_cap",
 			capacity: 2,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				r.Put([]byte("3"))
@@ -95,7 +95,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "pop_one",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				return [][]byte{r.Pop()}
@@ -110,7 +110,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "pop_all",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				return [][]byte{r.Pop(), r.Pop()}
@@ -125,7 +125,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "pop_empty",
 			capacity: 2,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				return [][]byte{r.Pop()}
 
 			},
@@ -139,7 +139,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "pop_more",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				return [][]byte{r.Pop(), r.Pop(), r.Pop()}
@@ -154,7 +154,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "pop-wrapped",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				r.Put([]byte("3"))
@@ -173,7 +173,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "popn_equal",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				return r.PopN(2)
@@ -188,7 +188,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "popn-empty",
 			capacity: 2,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				return r.PopN(3)
 			},
 			expectedState:    [][]byte{nil, nil},
@@ -200,7 +200,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "popn-wrapped_equal-n>=l",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				r.Put([]byte("3"))
@@ -220,7 +220,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "popn-wrapped_n<l",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				r.PopN(1)
@@ -238,7 +238,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "popall",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				r.Put([]byte("1"))
 				r.Put([]byte("2"))
 				return r.PopAll()
@@ -253,7 +253,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "popall_empty",
 			capacity: 4,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				return r.PopAll()
 			},
 			expectedReturn:   nil,
@@ -266,7 +266,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "put-async",
 			capacity: 128,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				var wg sync.WaitGroup
 				for i := 0; i < 127; i++ {
 					i := i
@@ -288,7 +288,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "pop-async",
 			capacity: 128,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				var wg sync.WaitGroup
 				for i := 0; i < 127; i++ {
 					i := i
@@ -313,7 +313,7 @@ func TestRingBuffer(t *testing.T) {
 		{
 			name:     "put_pop-async",
 			capacity: 512,
-			operation: func(r *RingBuffer) [][]byte {
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
 				var wg sync.WaitGroup
 				var ops int64 // To count the number of operations
 
@@ -351,7 +351,7 @@ func TestRingBuffer(t *testing.T) {
 	t.Parallel()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rb, err := NewRingBuffer(tc.capacity)
+			rb, err := NewRingBuffer[[]byte](tc.capacity)
 			assert.NoError(t, err)
 
 			gotReturn := tc.operation(rb)
@@ -372,13 +372,13 @@ func TestRingBuffer(t *testing.T) {
 // {
 //				name:     "1mil_messafes-0.01kb-grow",
 //				capacity: 2,
-//				operation: func(r *RingBuffer)[][]byte {
+//				operation: func(r *RingBuffer[[]byte])[][]byte {
 //					for i := 0; i < 1_000_000; i++ {
 //						msg := make([]byte, 10)
 //						r.Put(msg)
 //					}
 //				},
-//				operation: func(r *RingBuffer) {
+//				operation: func(r *RingBuffer[[]byte]) {
 //					r.Pop()
 //				},
 //			},
@@ -389,7 +389,7 @@ func BenchmarkPop(b *testing.B) {
 		{
 			name:     "10k_messages-0.01kb",
 			capacity: 65_536,
-			setup: func(r *RingBuffer) {
+			setup: func(r *RingBuffer[[]byte]) {
 				for i := 0; i < 10_000; i++ {
 					msg := make([]byte, 10)
 					r.Put(msg)
@@ -399,7 +399,7 @@ func BenchmarkPop(b *testing.B) {
 		{
 			name:     "1mil_messages-0.01kb",
 			capacity: 1_048_576,
-			setup: func(r *RingBuffer) {
+			setup: func(r *RingBuffer[[]byte]) {
 				for i := 0; i < 1_000_000; i++ {
 					msg := make([]byte, 10)
 					r.Put(msg)
@@ -409,7 +409,7 @@ func BenchmarkPop(b *testing.B) {
 		{
 			name:     "10mil_messages-0.01kb",
 			capacity: 16_777_216,
-			setup: func(r *RingBuffer) {
+			setup: func(r *RingBuffer[[]byte]) {
 				for i := 0; i < 10_000_00; i++ {
 					msg := make([]byte, 10)
 					r.Put(msg)
@@ -420,7 +420,7 @@ func BenchmarkPop(b *testing.B) {
 
 	for _, bc := range benchCases {
 		b.Run(bc.name, func(b *testing.B) {
-			rb, err := NewRingBuffer(bc.capacity)
+			rb, err := NewRingBuffer[[]byte](bc.capacity)
 			assert.NoError(b, err)
 
 			bc.setup(rb)
@@ -431,7 +431,7 @@ func BenchmarkPop(b *testing.B) {
 		})
 
 		b.Run(bc.name+"_pop-all", func(b *testing.B) {
-			rb, err := NewRingBuffer(bc.capacity)
+			rb, err := NewRingBuffer[[]byte](bc.capacity)
 			assert.NoError(b, err)
 			for i := 0; i < b.N; i++ {
 				b.StopTimer()

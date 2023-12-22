@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 )
 
-type RingBuffer struct {
-	ptr    atomic.Pointer[[][]byte]
+type RingBuffer[T any] struct {
+	ptr    atomic.Pointer[[]T]
 	cap    atomic.Uint64
 	h      atomic.Uint64
 	t      atomic.Uint64
@@ -16,16 +16,16 @@ type RingBuffer struct {
 	bLock  sync.RWMutex
 }
 
-func NewRingBuffer(capacity uint64) (*RingBuffer, error) {
+func NewRingBuffer[T any](capacity uint64) (*RingBuffer[T], error) {
 	if capacity < 2 || capacity&(capacity-1) != 0 {
 		return nil, fmt.Errorf("capacity needs to be power of 2")
 	}
-	buf := make([][]byte, capacity)
-	ptr := atomic.Pointer[[][]byte]{}
+	buf := make([]T, capacity)
+	ptr := atomic.Pointer[[]T]{}
 	ptr.Store(&buf)
 	cap := atomic.Uint64{}
 	cap.Store(capacity)
-	r := &RingBuffer{
+	r := &RingBuffer[T]{
 		ptr:    ptr,
 		cap:    cap,
 		ch:     make(chan uint64),
@@ -37,7 +37,7 @@ func NewRingBuffer(capacity uint64) (*RingBuffer, error) {
 }
 
 // Handles growing the buffer
-func (r *RingBuffer) manager() {
+func (r *RingBuffer[T]) manager() {
 	for {
 		prevcap, ok := <-r.ch
 		if !ok {
@@ -49,7 +49,7 @@ func (r *RingBuffer) manager() {
 			return
 		}
 
-		bufN := make([][]byte, 2*r.Cap())
+		bufN := make([]T, 2*r.Cap())
 
 		r.bLock.Lock()
 		copy(bufN, *r.buf())
@@ -61,18 +61,18 @@ func (r *RingBuffer) manager() {
 	}
 }
 
-func (r *RingBuffer) Len() uint64 {
+func (r *RingBuffer[T]) Len() uint64 {
 	if r.t.Load() >= r.h.Load() {
 		return r.t.Load() - r.h.Load()
 	}
 	return r.cap.Load() - r.h.Load() + r.t.Load()
 }
 
-func (r *RingBuffer) Cap() uint64 {
+func (r *RingBuffer[T]) Cap() uint64 {
 	return r.cap.Load()
 }
 
-func (r *RingBuffer) Put(v []byte) {
+func (r *RingBuffer[T]) Put(v T) {
 	if r.full() {
 		// only one growth will occur
 		r.ch <- r.Cap()
@@ -85,11 +85,10 @@ func (r *RingBuffer) Put(v []byte) {
 	(*r.buf())[prev] = v
 }
 
-//func (r *RingBuffer) PutN(vs [][]byte)
-
-func (r *RingBuffer) Pop() []byte {
+func (r *RingBuffer[T]) Pop() T {
 	if r.empty() {
-		return nil
+		var zero T
+		return zero
 	}
 
 	r.bLock.Lock()
@@ -98,11 +97,11 @@ func (r *RingBuffer) Pop() []byte {
 	prev := r.h.Swap((r.h.Load() + 1) & (r.Cap() - 1))
 	v := (*r.buf())[prev]
 
-	return makeCopy[byte](v)
+	return v
 
 }
 
-func (r *RingBuffer) PopN(n uint64) [][]byte {
+func (r *RingBuffer[T]) PopN(n uint64) []T {
 	if r.empty() {
 		return nil
 	}
@@ -122,25 +121,25 @@ func (r *RingBuffer) PopN(n uint64) [][]byte {
 			r.h.Add(n)
 		}
 		v := (*r.buf())[h:n]
-		return makeCopy[[]byte](v)
+		return makeCopy[T](v)
 	}
 	if n >= l {
 		// entire buffer will be popped
 		r.h.Swap(0)
 		r.t.Swap(0)
 		v := append((*r.buf())[h:c], (*r.buf())[0:t]...)
-		return makeCopy[[]byte](v)
+		return makeCopy[T](v)
 	}
 	r.h.Add(n)
 	n -= c - h
 
 	v := append((*r.buf())[h:c-1], (*r.buf())[0:t-n-1]...)
-	return makeCopy[[]byte](v)
+	return makeCopy[T](v)
 }
 
 // Returns entire unordered buffer including empty fields.
 // If you only want values ordered (FIFO) use PopN(matt.MaxInt64)
-func (r *RingBuffer) PopAll() [][]byte {
+func (r *RingBuffer[T]) PopAll() []T {
 	if r.empty() {
 		return nil
 	}
@@ -148,15 +147,15 @@ func (r *RingBuffer) PopAll() [][]byte {
 	return *r.buf()
 }
 
-func (r *RingBuffer) buf() *[][]byte {
+func (r *RingBuffer[T]) buf() *[]T {
 	return r.ptr.Load()
 }
 
-func (r *RingBuffer) empty() bool {
+func (r *RingBuffer[T]) empty() bool {
 	return r.h.Load() == r.t.Load()
 }
 
-func (r *RingBuffer) full() bool {
+func (r *RingBuffer[T]) full() bool {
 	if r.empty() {
 		return false
 	}
