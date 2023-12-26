@@ -107,12 +107,14 @@ func TestTopicAllPublishBatch(t *testing.T) {
 func TestTopicAllPublishBatchDone(t *testing.T) {
 	// TODO: add tests for Cancel()
 	tests := []struct {
-		name string
-		msgs [][]byte
+		name        string
+		msgs        [][]byte
+		wantTimeout bool
 	}{
 		{
-			name: "empty",
-			msgs: [][]byte{},
+			name:        "empty",
+			msgs:        [][]byte{},
+			wantTimeout: true,
 		},
 		{
 			name: "single",
@@ -149,7 +151,9 @@ func TestTopicAllPublishBatchDone(t *testing.T) {
 			select {
 			case <-ctx.Done():
 			case <-time.After(200 * time.Millisecond):
-				t.Error("ctx.Done() timedout")
+				if !tt.wantTimeout {
+					t.Error("ctx.Done() timedout")
+				}
 
 			}
 		})

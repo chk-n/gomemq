@@ -7,8 +7,9 @@ import (
 )
 
 type topicAll struct {
-	cfg    ConfigTopic
-	subs   map[string]interface{}
+	cfg ConfigTopic
+	// used for duplicate check
+	subs   map[string]any
 	hs     []MessageHandler
 	hsLock sync.RWMutex
 	rb     *RingBuffer[message]
@@ -19,6 +20,7 @@ type topicAll struct {
 	// ids to callback to
 	cback        map[string]*Context
 	cbackTrigger map[string]atomic.Int64
+	cbackLock    sync.Mutex
 }
 
 func newTopicAll(retry retrier, cfg ConfigTopic) *topicAll {
@@ -39,20 +41,21 @@ func (t *topicAll) manage() {
 	for {
 		msgs := t.rb.PopN(math.MaxInt64)
 		if len(msgs) == 0 {
+			// runtime.Gosched()
 			continue
 		}
 
 		for i := 0; i < len(msgs); i++ {
 			if t.cfg.MaxConcurrentMessages == 1 {
 				t.notify(msgs[i])
-			} else {
-				sem <- struct{}{}
-				i := i
-				go func() {
-					t.notify(msgs[i])
-					<-sem
-				}()
+				continue
 			}
+			sem <- struct{}{}
+			i := i
+			go func() {
+				t.notify(msgs[i])
+				<-sem
+			}()
 		}
 	}
 }
@@ -61,6 +64,9 @@ func (t *topicAll) Subscribe(handler MessageHandler) {
 	if handler == nil {
 		return
 	}
+
+	// BUG not thread safe!
+	// check duplicates
 	ptr := getHandlerPointer(handler)
 	if _, ok := t.subs[ptr]; ok {
 		return
@@ -73,18 +79,22 @@ func (t *topicAll) Subscribe(handler MessageHandler) {
 }
 
 func (t *topicAll) Publish(msg []byte) {
+	m := makeCopy[byte](msg)
+
 	id, err := generateUid()
 	if err != nil {
 		panic(err)
 	}
 	t.rb.Put(message{
 		id:   id,
-		data: msg,
+		data: m,
 	})
 }
 
 // Publish with receiving an ackknowledgement
 func (t *topicAll) PublishDone(msg []byte) *Context {
+	m := makeCopy[byte](msg)
+
 	id, err := generateUid()
 	if err != nil {
 		panic(err)
@@ -93,16 +103,16 @@ func (t *topicAll) PublishDone(msg []byte) *Context {
 		ch:  make(chan any),
 		cnt: 1,
 	}
-
-	t.cback[id] = c
+	t.setCtx(id, c)
 
 	t.rb.Put(message{
 		id:   id,
-		data: msg,
+		data: m,
 	})
 	return c
 }
 
+// Publishes multiple messages to subscribers
 func (t *topicAll) PublishBatch(msgs [][]byte) {
 	id, err := generateUid()
 	if err != nil {
@@ -111,7 +121,7 @@ func (t *topicAll) PublishBatch(msgs [][]byte) {
 	t.putN(id, msgs)
 }
 
-// Publish with receiving an ackknowldgement when all msgs in batch delivered
+// Publish with receiving an ackknowldgement when all msgs in batch processed by subscriber without error
 func (t *topicAll) PublishBatchDone(msgs [][]byte) *Context {
 	id, err := generateUid()
 	if err != nil {
@@ -121,14 +131,17 @@ func (t *topicAll) PublishBatchDone(msgs [][]byte) *Context {
 		ch:  make(chan any),
 		cnt: int64(len(msgs)),
 	}
-	t.cback[id] = c
+	t.setCtx(id, c)
+
 	t.putN(id, msgs)
 	return c
 }
 
+// Makes copy of data and stores messages in buffer
 func (t *topicAll) putN(id string, msgs [][]byte) {
+	msgsCopy := makeCopy[[]byte](msgs)
 	ms := make([]message, 0, len(msgs))
-	for _, m := range msgs {
+	for _, m := range msgsCopy {
 		ms = append(ms, message{
 			id:   id,
 			data: m,
@@ -139,20 +152,23 @@ func (t *topicAll) putN(id string, msgs [][]byte) {
 
 func (t *topicAll) notify(msg message) {
 	sem := make(chan interface{}, t.cfg.MaxConcurrentSubscribers)
-	for i := 0; i < len(t.subs); i++ {
-		sem <- struct{}{}
-		handler := t.hs[i]
+	for _, h := range t.hs {
+		h := h
 		// If canceled return
 		if t.isCanceled(msg) {
 			return
 		}
+
+		sem <- struct{}{}
 		go func() {
 			if err := t.retry.DoTimeout(t.cfg.MessageTimeout, func() error {
+				// BUG data race occurs when reading msg (although its never edited by any other thread)
+
 				// If canceled return
 				if t.isCanceled(msg) {
 					return nil
 				}
-				if err := handler(msg.data); err != nil {
+				if err := h(msg.data); err != nil {
 					return err
 				}
 				// Update context that message was delivered successfully
@@ -162,7 +178,7 @@ func (t *topicAll) notify(msg message) {
 				return nil
 			}); err != nil {
 				d := dlq{
-					HandlerPtr: getHandlerPointer(handler),
+					HandlerPtr: getHandlerPointer(h),
 					Msg:        msg.data,
 					Err:        err,
 				}
@@ -183,4 +199,11 @@ func (t *topicAll) isCanceled(msg message) bool {
 		}
 	}
 	return false
+}
+
+// safely set ctx
+func (t *topicAll) setCtx(id string, ctx *Context) {
+	t.cbackLock.Lock()
+	t.cback[id] = ctx
+	t.cbackLock.Unlock()
 }
