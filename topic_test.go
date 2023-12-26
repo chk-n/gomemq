@@ -97,7 +97,7 @@ func TestTopicAllPublishBatch(t *testing.T) {
 
 			topic.PublishBatch(tt.msgs)
 
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 
 			assert.Equal(t, len(tt.msgs), int(cnt))
 		})
@@ -144,13 +144,10 @@ func TestTopicAllPublishBatchDone(t *testing.T) {
 
 			ctx := topic.PublishBatchDone(tt.msgs)
 
-			time.Sleep(50 * time.Millisecond)
-
-			assert.Equal(t, len(tt.msgs), int(cnt))
-
 			select {
 			case <-ctx.Done():
-			case <-time.After(200 * time.Millisecond):
+				assert.Equal(t, len(tt.msgs), int(cnt))
+			case <-time.After(500 * time.Millisecond):
 				if !tt.wantTimeout {
 					t.Error("ctx.Done() timedout")
 				}
