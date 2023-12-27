@@ -90,7 +90,25 @@ func Join[T any](name string) (topic[T], error) {
 	return t, nil
 }
 
-// TODO add convenience functions that use Join (subscribe, publish, publishbatch etc)
+// Convenience method to subscribe to topic
+func Subscribe[T any](name string, h MessageHandler[T]) error {
+	t, err := Join[T](name)
+	if err != nil {
+		return err
+	}
+	t.Subscribe(h)
+	return nil
+}
+
+// Convenience method to publish in a batch with done ack
+func PublishBatchDone[T any](name string, msgs []T) (*Context, error) {
+	t, err := Join[T](name)
+	if err != nil {
+		return nil, err
+	}
+	return t.PublishBatchDone(msgs), nil
+
+}
 
 func getInst() *messageQueue {
 	return mq

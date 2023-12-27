@@ -13,6 +13,7 @@ type topic[T any] interface {
 	manage()
 	Subscribe(handler MessageHandler[T])
 	Publish(msg T)
+	PublishBatchDone(msgs []T) *Context
 }
 
 // Types
