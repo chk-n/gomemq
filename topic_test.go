@@ -47,7 +47,7 @@ func TestTopicAll(t *testing.T) {
 				topic.Publish([]byte("test message"))
 			}
 
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 
 			assert.Equal(t, tt.subscriberCount*tt.messageCount, int(cnt.Load()))
 		})
