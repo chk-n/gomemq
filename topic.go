@@ -6,16 +6,16 @@ import (
 	"sync/atomic"
 )
 
-type topicAll struct {
+type topicAll[T any] struct {
 	cfg ConfigTopic
 	// used for duplicate check
 	subs map[string]any
 	// contains all message handlers (i.e. subscribers)
-	hs     []MessageHandler
+	hs     []MessageHandler[T]
 	hsLock sync.RWMutex
-	rb     *RingBuffer[message]
+	rb     *RingBuffer[message[T]]
 	// dead letter queue contains failed messages
-	dlq     []dlq
+	dlq     []dlq[T]
 	dlqLock sync.RWMutex
 
 	// Interface to define custom retry policy
@@ -26,12 +26,12 @@ type topicAll struct {
 	cbackTrigger *FastMap[string, atomic.Int64]
 }
 
-func newTopicAll(retry retrier, cfg ConfigTopic) *topicAll {
-	rb, _ := NewRingBuffer[message](1_024)
-	return &topicAll{
+func newTopicAll[T any](retry retrier, cfg ConfigTopic) *topicAll[T] {
+	rb, _ := NewRingBuffer[message[T]](1_024)
+	return &topicAll[T]{
 		cfg:          cfg,
 		rb:           rb,
-		dlq:          []dlq{},
+		dlq:          []dlq[T]{},
 		retry:        retry,
 		cback:        NewFM[*Context](),
 		cbackTrigger: NewFM[atomic.Int64](),
@@ -39,7 +39,7 @@ func newTopicAll(retry retrier, cfg ConfigTopic) *topicAll {
 }
 
 // start topic manager
-func (t *topicAll) manage() {
+func (t *topicAll[T]) manage() {
 	sem := make(chan interface{}, t.cfg.MaxConcurrentMessages)
 	for {
 		msgs := t.rb.PopN(math.MaxInt64)
@@ -63,7 +63,7 @@ func (t *topicAll) manage() {
 	}
 }
 
-func (t *topicAll) Subscribe(handler MessageHandler) {
+func (t *topicAll[T]) Subscribe(handler MessageHandler[T]) {
 	if handler == nil {
 		return
 	}
@@ -83,22 +83,22 @@ func (t *topicAll) Subscribe(handler MessageHandler) {
 
 // TODO add way to unsubscribe
 
-func (t *topicAll) Publish(msg []byte) {
-	m := makeCopy[byte](msg)
+func (t *topicAll[T]) Publish(msg T) {
+	//m := makeCopy[T](msg)
 
 	id, err := generateUid()
 	if err != nil {
 		panic(err)
 	}
-	t.rb.Put(message{
+	t.rb.Put(message[T]{
 		id:   id,
-		data: m,
+		data: msg,
 	})
 }
 
 // Publish with receiving an ackknowledgement
-func (t *topicAll) PublishDone(msg []byte) *Context {
-	m := makeCopy[byte](msg)
+func (t *topicAll[T]) PublishDone(msg T) *Context {
+	// m := makeCopy[byte](msg)
 
 	id, err := generateUid()
 	if err != nil {
@@ -110,15 +110,15 @@ func (t *topicAll) PublishDone(msg []byte) *Context {
 	}
 	t.cback.Set(id, c)
 
-	t.rb.Put(message{
+	t.rb.Put(message[T]{
 		id:   id,
-		data: m,
+		data: msg,
 	})
 	return c
 }
 
 // Publishes multiple messages to subscribers
-func (t *topicAll) PublishBatch(msgs [][]byte) {
+func (t *topicAll[T]) PublishBatch(msgs []T) {
 	id, err := generateUid()
 	if err != nil {
 		panic(err)
@@ -127,7 +127,7 @@ func (t *topicAll) PublishBatch(msgs [][]byte) {
 }
 
 // Publish with receiving an ackknowldgement when all msgs in batch processed by subscriber without error
-func (t *topicAll) PublishBatchDone(msgs [][]byte) *Context {
+func (t *topicAll[T]) PublishBatchDone(msgs []T) *Context {
 	id, err := generateUid()
 	if err != nil {
 		panic(err)
@@ -143,11 +143,11 @@ func (t *topicAll) PublishBatchDone(msgs [][]byte) *Context {
 }
 
 // Makes copy of data and stores messages in buffer
-func (t *topicAll) putN(id string, msgs [][]byte) {
-	msgsCopy := makeCopy[[]byte](msgs)
-	ms := make([]message, 0, len(msgs))
+func (t *topicAll[T]) putN(id string, msgs []T) {
+	msgsCopy := makeCopy[T](msgs)
+	ms := make([]message[T], 0, len(msgs))
 	for _, m := range msgsCopy {
-		ms = append(ms, message{
+		ms = append(ms, message[T]{
 			id:   id,
 			data: m,
 		})
@@ -156,7 +156,7 @@ func (t *topicAll) putN(id string, msgs [][]byte) {
 }
 
 // Copy of message passed to notify
-func (t *topicAll) notify(msg message) {
+func (t *topicAll[T]) notify(msg message[T]) {
 	sem := make(chan interface{}, t.cfg.MaxConcurrentSubscribers)
 	for _, h := range t.hs {
 		h := h
@@ -182,7 +182,7 @@ func (t *topicAll) notify(msg message) {
 				}
 				return nil
 			}); err != nil {
-				d := dlq{
+				d := dlq[T]{
 					HandlerPtr: getHandlerPointer(h),
 					Msg:        msg.data,
 					Err:        err,
@@ -197,7 +197,7 @@ func (t *topicAll) notify(msg message) {
 }
 
 // checks whether a message was cancelled
-func (t *topicAll) isCanceled(msg message) bool {
+func (t *topicAll[T]) isCanceled(msg message[T]) bool {
 	if c, ok := t.cback.Get(msg.id); ok {
 		if c.canceled() {
 			return true

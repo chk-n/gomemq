@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+var (
+	mq *messageQueue
+	mu sync.RWMutex
+)
+
 type Config struct {
 	Retry retrier
 }
@@ -32,70 +37,59 @@ type ConfigTopic struct {
 }
 
 type messageQueue struct {
-	cfg       Config
-	topics    map[string]topic
-	topicLock sync.RWMutex
+	cfg    Config
+	topics *FastMap[string, topic[any]]
 }
 
 func New(cfg Config) *messageQueue {
-	return &messageQueue{
-		topics: make(map[string]topic),
+	if mq == nil {
+		mu.Lock()
+		if mq != nil {
+			return mq
+		}
+		mq = &messageQueue{
+			topics: NewFM[topic[any]](),
+		}
+		mu.Unlock()
 	}
+	return mq
 }
 
-// Creates new topic
-func (m *messageQueue) Topic(cfg ConfigTopic) (topic, error) {
+// create new topic
+func NewTopic[T any](cfg ConfigTopic) (topic[T], error) {
 	if cfg.Name == "" {
 		return nil, fmt.Errorf("%s: topic name empty", errInvalidTopic)
 	}
 
-	t := selectTopic(m.cfg.Retry, cfg)
-	m.topicLock.Lock()
-	if m.topicExists(cfg.Name) {
+	mq := getInst()
+
+	t := selectTopic[T](mq.cfg.Retry, cfg)
+	if mq.topics.Exists(cfg.Name) {
 		return nil, errTopicExists
 	}
-	m.topics[cfg.Name] = t
-	m.topicLock.Unlock()
+	mq.topics.Set(cfg.Name, t.(topic[any]))
 
 	go t.manage()
 
 	return t, nil
 }
 
-// Join existing topic
-func (m *messageQueue) Join(topic string) (topic, error) {
-	m.topicLock.Lock()
-	defer m.topicLock.Unlock()
+// Join a preexisting topic
+func Join[T any](name string) (topic[T], error) {
+	mq := getInst()
 
-	if t, ok := m.topics[topic]; ok {
-		return t, nil
+	tc, ok := mq.topics.Get(name)
+	if !ok {
+		return nil, fmt.Errorf("%s: topic not found", errInvalidTopic)
 	}
-	return nil, errInvalidTopic
+
+	t, ok := tc.(topic[T])
+	if !ok {
+		return nil, fmt.Errorf("%s: topic of invalid type, got %T", errInvalidTopic, tc)
+	}
+	return t, nil
 }
 
-func (m *messageQueue) Subscribe(topic string, handler MessageHandler) error {
-	m.topicLock.Lock()
-	defer m.topicLock.Unlock()
-
-	if m.topicExists(topic) {
-		return errTopicExists
-	}
-	m.topics[topic].Subscribe(handler)
-	return nil
-}
-
-func (m *messageQueue) Publish(topic string, msg []byte) error {
-	m.topicLock.Lock()
-	defer m.topicLock.Unlock()
-
-	if m.topicExists(topic) {
-		return errTopicExists
-	}
-	m.topics[topic].Publish(msg)
-	return nil
-}
-
-func (m *messageQueue) topicExists(topic string) bool {
-	_, ok := m.topics[topic]
-	return ok
+func getInst() *messageQueue {
+	return mq
 }

@@ -9,23 +9,23 @@ type retrier interface {
 	DoTimeout(time.Duration, func() error) error
 }
 
-type topic interface {
+type topic[T any] interface {
 	manage()
-	Subscribe(handler MessageHandler)
-	Publish(msg []byte)
+	Subscribe(handler MessageHandler[T])
+	Publish(msg T)
 }
 
 // Types
 
-type MessageHandler func(msg []byte) error
+type MessageHandler[T any] func(msg T) error
 
-type PublishMethod func(hs []MessageHandler, msg []byte)
+type PublishMethod[T any] func(hs []MessageHandler[T], msg T)
 
 type PublishPolicy uint8
 
-type dlq struct {
+type dlq[T any] struct {
 	HandlerPtr string
-	Msg        []byte
+	Msg        T
 	Err        error
 }
 
@@ -40,7 +40,7 @@ const (
 	random
 )
 
-type message struct {
+type message[T any] struct {
 	id   string
-	data []byte
+	data T
 }

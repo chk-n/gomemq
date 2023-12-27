@@ -102,11 +102,12 @@ func BenchmarkPublish(b *testing.B) {
 
 	for _, c := range cases {
 		cfg := Config{}
-		mq := New(cfg)
+		// initialise new singleton mq
+		New(cfg)
 		cfgTopic := ConfigTopic{
 			Name: "test",
 		}
-		t, err := mq.Topic(cfgTopic)
+		t, err := NewTopic[[]byte](cfgTopic)
 		if err != nil {
 			b.Fatalf(err.Error())
 		}
