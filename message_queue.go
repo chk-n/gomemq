@@ -90,6 +90,8 @@ func Join[T any](name string) (topic[T], error) {
 	return t, nil
 }
 
+// TODO add convenience functions that use Join (subscribe, publish, publishbatch etc)
+
 func getInst() *messageQueue {
 	return mq
 }
