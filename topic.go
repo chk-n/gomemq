@@ -104,10 +104,7 @@ func (t *topicAll[T]) PublishDone(msg T) *Context {
 	if err != nil {
 		panic(err)
 	}
-	c := &Context{
-		ch:      make(chan any),
-		trigger: 1,
-	}
+	c := NewContext(1)
 	t.cback.Set(id, c)
 
 	t.rb.Put(message[T]{
@@ -132,10 +129,7 @@ func (t *topicAll[T]) PublishBatchDone(msgs []T) *Context {
 	if err != nil {
 		panic(err)
 	}
-	c := &Context{
-		ch:      make(chan any),
-		trigger: int64(len(msgs)),
-	}
+	c := NewContext(int64(len(msgs)))
 	t.cback.Set(id, c)
 
 	t.putN(id, msgs)
