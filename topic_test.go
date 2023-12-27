@@ -144,6 +144,7 @@ func TestTopicAllPublishBatchDone(t *testing.T) {
 
 			ctx := topic.PublishBatchDone(tt.msgs)
 
+			// BUG here with Done; it returns but somehow the cnt is wrong
 			select {
 			case <-ctx.Done():
 				assert.Equal(t, len(tt.msgs), int(cnt.Load()))

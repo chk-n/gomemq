@@ -106,7 +106,6 @@ func (t *topicAll) PublishDone(msg []byte) *Context {
 	}
 	c := &Context{
 		ch:      make(chan any),
-		cnt:     1,
 		trigger: 1,
 	}
 	t.cback.Set(id, c)
@@ -135,7 +134,6 @@ func (t *topicAll) PublishBatchDone(msgs [][]byte) *Context {
 	}
 	c := &Context{
 		ch:      make(chan any),
-		cnt:     int64(len(msgs)),
 		trigger: int64(len(msgs)),
 	}
 	t.cback.Set(id, c)
