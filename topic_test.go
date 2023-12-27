@@ -35,10 +35,10 @@ func TestTopicAll(t *testing.T) {
 
 			go topic.manage()
 
-			var cnt int64
+			var cnt atomic.Int64
 			for i := 0; i < tt.subscriberCount; i++ {
 				topic.Subscribe(func(msg []byte) error {
-					atomic.AddInt64(&cnt, 1)
+					cnt.Add(1)
 					return nil
 				})
 			}
@@ -49,7 +49,7 @@ func TestTopicAll(t *testing.T) {
 
 			time.Sleep(50 * time.Millisecond)
 
-			assert.Equal(t, tt.subscriberCount*tt.messageCount, int(cnt))
+			assert.Equal(t, tt.subscriberCount*tt.messageCount, int(cnt.Load()))
 		})
 	}
 }
