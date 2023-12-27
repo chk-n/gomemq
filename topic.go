@@ -9,7 +9,8 @@ import (
 type topicAll struct {
 	cfg ConfigTopic
 	// used for duplicate check
-	subs   map[string]any
+	subs map[string]any
+	// contains all message handlers (i.e. subscribers)
 	hs     []MessageHandler
 	hsLock sync.RWMutex
 	rb     *RingBuffer[message]
@@ -20,7 +21,7 @@ type topicAll struct {
 	// Interface to define custom retry policy
 	retry retrier
 
-	// ids to callback to
+	// tracks message id with context so we can notify publisher when subscirber processed message successfully
 	cback        *FastMap[string, *Context]
 	cbackTrigger *FastMap[string, atomic.Int64]
 }
@@ -80,6 +81,8 @@ func (t *topicAll) Subscribe(handler MessageHandler) {
 	t.hs = append(t.hs, handler)
 }
 
+// TODO add way to unsubscribe
+
 func (t *topicAll) Publish(msg []byte) {
 	m := makeCopy[byte](msg)
 
@@ -102,10 +105,11 @@ func (t *topicAll) PublishDone(msg []byte) *Context {
 		panic(err)
 	}
 	c := &Context{
-		ch:  make(chan any),
-		cnt: 1,
+		ch:      make(chan any),
+		cnt:     1,
+		trigger: 1,
 	}
-	t.setCtx(id, c)
+	t.cback.Set(id, c)
 
 	t.rb.Put(message{
 		id:   id,
@@ -130,10 +134,11 @@ func (t *topicAll) PublishBatchDone(msgs [][]byte) *Context {
 		panic(err)
 	}
 	c := &Context{
-		ch:  make(chan any),
-		cnt: int64(len(msgs)),
+		ch:      make(chan any),
+		cnt:     int64(len(msgs)),
+		trigger: int64(len(msgs)),
 	}
-	t.setCtx(id, c)
+	t.cback.Set(id, c)
 
 	t.putN(id, msgs)
 	return c
@@ -152,6 +157,7 @@ func (t *topicAll) putN(id string, msgs [][]byte) {
 	t.rb.PutN(ms)
 }
 
+// Copy of message passed to notify
 func (t *topicAll) notify(msg message) {
 	sem := make(chan interface{}, t.cfg.MaxConcurrentSubscribers)
 	for _, h := range t.hs {
@@ -164,8 +170,6 @@ func (t *topicAll) notify(msg message) {
 		sem <- struct{}{}
 		go func() {
 			if err := t.retry.DoTimeout(t.cfg.MessageTimeout, func() error {
-				// BUG data race occurs when reading msg (although its never edited by any other thread)
-
 				// If canceled return
 				if t.isCanceled(msg) {
 					return nil
@@ -202,9 +206,4 @@ func (t *topicAll) isCanceled(msg message) bool {
 		}
 	}
 	return false
-}
-
-// safely set ctx
-func (t *topicAll) setCtx(id string, ctx *Context) {
-	t.cback.Set(id, ctx)
 }
