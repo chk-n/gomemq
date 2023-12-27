@@ -5,6 +5,13 @@ Lightweight and concurrent in-memory message queue written in golang with zero t
 
 \*Excluding packages used for tests
 
+## Features
+
+* Fast and lightweight
+* Zero third party dependencies
+* Publish in batches
+* Publish with 'done' response (once all subscribers successfully processed message(s))
+
 ## Get
 
 `go get github.com/chk-n/gomemq`
@@ -16,7 +23,7 @@ Lightweight and concurrent in-memory message queue written in golang with zero t
 cfg := gomemq.Config{
   // retrier
 }
-mq := memq.New(cfg)
+mq := gomemq.New(cfg)
 
 // create topic
 cfgTopic := gomemq.ConfigTopic{
@@ -41,9 +48,9 @@ t,_ = mq.Join("")
 // It is also possible to publish directly through mq
 
 // publish through mq
-mq.Publish("", msg)
+mq.Publish("topic_name", msg)
 
-mq.Subscribe("", func(b []byte) error {
+mq.Subscribe("topic_name", func(b []byte) error {
   // handle message asynchronously
 })
 ```
