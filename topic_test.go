@@ -27,7 +27,7 @@ func TestTopicAll(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			topic := newTopicAll(retry.NewDefault(), ConfigTopic{
+			topic := newTopicAll[[]byte](retry.NewDefault(), ConfigTopic{
 				MaxConcurrentMessages:    tt.maxConcurrentMsg,
 				MaxConcurrentSubscribers: tt.maxConcurrentSubs,
 				MessageTimeout:           10 * time.Second,
@@ -81,7 +81,7 @@ func TestTopicAllPublishBatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			topic := newTopicAll(retry.NewDefault(), ConfigTopic{
+			topic := newTopicAll[[]byte](retry.NewDefault(), ConfigTopic{
 				MaxConcurrentMessages:    10,
 				MaxConcurrentSubscribers: 10,
 				MessageTimeout:           10 * time.Second,
@@ -128,7 +128,7 @@ func TestTopicAllPublishBatchDone(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			topic := newTopicAll(retry.NewDefault(), ConfigTopic{
+			topic := newTopicAll[[]byte](retry.NewDefault(), ConfigTopic{
 				MaxConcurrentMessages:    10,
 				MaxConcurrentSubscribers: 10,
 				MessageTimeout:           10 * time.Second,
@@ -159,7 +159,7 @@ func TestTopicAllPublishBatchDone(t *testing.T) {
 }
 
 func TestConcurrencyOnSubscribeAndPublish(t *testing.T) {
-	topic := newTopicAll(retry.NewDefault(), ConfigTopic{
+	topic := newTopicAll[[]byte](retry.NewDefault(), ConfigTopic{
 		MaxConcurrentMessages:    10,
 		MaxConcurrentSubscribers: 10,
 		MessageTimeout:           10 * time.Second,

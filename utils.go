@@ -10,14 +10,14 @@ import (
 )
 
 // returns topic type based on config
-func selectTopic(r retrier, cfg ConfigTopic) topic {
+func selectTopic[T any](r retrier, cfg ConfigTopic) topic[T] {
 	switch cfg.PublishPolicy {
 	default:
-		return newTopicAll(r, cfg)
+		return newTopicAll[T](r, cfg)
 	}
 }
 
-func getHandlerPointer(m MessageHandler) string {
+func getHandlerPointer[T any](m MessageHandler[T]) string {
 	return fmt.Sprintf("%d", reflect.ValueOf(m).Pointer())
 }
 
