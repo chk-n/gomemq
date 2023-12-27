@@ -93,6 +93,62 @@ func TestRingBuffer(t *testing.T) {
 			expectedTail:     3,
 		},
 		{
+			name:     "put_n",
+			capacity: 4,
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
+				r.PutN([][]byte{[]byte("1"), []byte("2")})
+				return nil
+			},
+			expectedState:    [][]byte{[]byte("1"), []byte("2"), nil, nil},
+			expectedCapacity: 4,
+			expectedLength:   2,
+			expectedHead:     0,
+			expectedTail:     2,
+		},
+		{
+			name:     "put_n_empty",
+			capacity: 2,
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
+				r.PutN([][]byte{})
+				return nil
+			},
+			expectedState:    [][]byte{nil, nil},
+			expectedCapacity: 2,
+			expectedLength:   0,
+			expectedHead:     0,
+			expectedTail:     0,
+		},
+		{
+			name:     "put_n_more_than_cap",
+			capacity: 2,
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
+				r.PutN([][]byte{[]byte("1"), []byte("2"), []byte("3")})
+				return nil
+			},
+			expectedState:    [][]byte{[]byte("1"), []byte("2"), []byte("3"), nil},
+			expectedCapacity: 4,
+			expectedLength:   3,
+			expectedHead:     0,
+			expectedTail:     3,
+		},
+		{
+			name:     "put_n_more_than_cap-wrapped",
+			capacity: 4,
+			operation: func(r *RingBuffer[[]byte]) [][]byte {
+				r.Put([]byte("1"))
+				r.Put([]byte("2"))
+				r.Pop()
+				r.Pop()
+				r.PutN([][]byte{[]byte("3"), []byte("4"), []byte("5")})
+				return nil
+			},
+			expectedState:    [][]byte{[]byte("5"), []byte("2"), []byte("3"), []byte("4")},
+			expectedCapacity: 4,
+			expectedLength:   3,
+			expectedHead:     2,
+			expectedTail:     1,
+		},
+		{
 			name:     "pop_one",
 			capacity: 4,
 			operation: func(r *RingBuffer[[]byte]) [][]byte {
@@ -362,8 +418,8 @@ func TestRingBuffer(t *testing.T) {
 			}
 			assert.Equal(t, tc.expectedCapacity, rb.Cap(), "buffer capacity mismatch")
 			assert.Equal(t, tc.expectedLength, rb.Len(), "buffer length mismatch")
-			assert.Equal(t, tc.expectedHead, rb.h.Load(), "buffer head mistmatch")
-			assert.Equal(t, tc.expectedTail, rb.t.Load(), "buffer tail mismatch")
+			assert.Equal(t, tc.expectedHead, rb.h, "buffer head mistmatch")
+			assert.Equal(t, tc.expectedTail, rb.t, "buffer tail mismatch")
 		})
 	}
 }

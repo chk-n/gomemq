@@ -1,16 +1,18 @@
 package gomemq
 
 import (
-	"fmt"
+	"errors"
 	"sync"
 	"sync/atomic"
 )
 
+// Thread safe ring buffer
+
 type RingBuffer[T any] struct {
 	ptr    atomic.Pointer[[]T]
-	cap    atomic.Uint64
-	h      atomic.Uint64
-	t      atomic.Uint64
+	cap    uint64
+	h      uint64
+	t      uint64
 	ch     chan uint64
 	doneCh chan any
 	bLock  sync.RWMutex
@@ -18,16 +20,16 @@ type RingBuffer[T any] struct {
 
 func NewRingBuffer[T any](capacity uint64) (*RingBuffer[T], error) {
 	if capacity < 2 || capacity&(capacity-1) != 0 {
-		return nil, fmt.Errorf("capacity needs to be power of 2")
+		return nil, errors.New("capacity needs to be power of 2")
 	}
 	buf := make([]T, capacity)
 	ptr := atomic.Pointer[[]T]{}
 	ptr.Store(&buf)
-	cap := atomic.Uint64{}
-	cap.Store(capacity)
+	//	cap := atomic.Uint64{}
+	//	cap.Store(capacity)
 	r := &RingBuffer[T]{
 		ptr:    ptr,
-		cap:    cap,
+		cap:    capacity,
 		ch:     make(chan uint64),
 		doneCh: make(chan any),
 	}
@@ -44,57 +46,85 @@ func (r *RingBuffer[T]) manager() {
 			return
 		}
 
-		if prevcap < r.cap.Load() {
+		if prevcap < r.cap {
 			r.doneCh <- struct{}{}
 			return
 		}
 
-		bufN := make([]T, 2*r.Cap())
+		bufN := make([]T, 2*r.cap)
 
-		r.bLock.Lock()
 		copy(bufN, *r.buf())
-		r.bLock.Unlock()
 
 		r.ptr.Swap(&bufN)
-		r.cap.Add(r.Cap())
+		r.cap += r.cap
 		r.doneCh <- struct{}{}
 	}
 }
 
 func (r *RingBuffer[T]) Len() uint64 {
-	if r.t.Load() >= r.h.Load() {
-		return r.t.Load() - r.h.Load()
-	}
-	return r.cap.Load() - r.h.Load() + r.t.Load()
+	r.bLock.Lock()
+	defer r.bLock.Unlock()
+	return r.len()
 }
 
 func (r *RingBuffer[T]) Cap() uint64 {
-	return r.cap.Load()
+	r.bLock.Lock()
+	defer r.bLock.Unlock()
+	return r.cap
 }
 
 func (r *RingBuffer[T]) Put(v T) {
+	r.bLock.Lock()
+	defer r.bLock.Unlock()
+
 	if r.full() {
 		// only one growth will occur
-		r.ch <- r.Cap()
+		r.ch <- r.cap
 		<-r.doneCh
 	}
 
-	r.bLock.Lock()
-	defer r.bLock.Unlock()
-	prev := r.t.Swap((r.t.Load() + 1) & (r.Cap() - 1))
+	prev := r.t
+	r.t = (r.t + 1) & (r.cap - 1)
 	(*r.buf())[prev] = v
 }
 
+func (r *RingBuffer[T]) PutN(v []T) {
+	r.bLock.Lock()
+	defer r.bLock.Unlock()
+
+	n := uint64(len(v))
+	if r.fullBatch(n) {
+		// only one growth will occur
+		r.ch <- r.cap
+		<-r.doneCh
+	}
+
+	h, t, c := r.h, r.t, r.cap
+
+	prev := t
+	r.t = (t + n) & (c - 1)
+
+	// remaining space before wrapping around
+	rem := c - h
+	if rem >= n {
+		copy((*r.buf())[prev:prev+n], v)
+	} else {
+		copy((*r.buf())[h:c], v[:rem])
+		copy((*r.buf())[0:t-(n-rem)], v[rem:])
+	}
+}
+
 func (r *RingBuffer[T]) Pop() T {
+	r.bLock.Lock()
+	defer r.bLock.Unlock()
+
 	if r.empty() {
 		var zero T
 		return zero
 	}
 
-	r.bLock.Lock()
-	defer r.bLock.Unlock()
-
-	prev := r.h.Swap((r.h.Load() + 1) & (r.Cap() - 1))
+	prev := r.h
+	r.h = (r.h + 1) & (r.cap - 1)
 	v := (*r.buf())[prev]
 
 	return v
@@ -102,35 +132,36 @@ func (r *RingBuffer[T]) Pop() T {
 }
 
 func (r *RingBuffer[T]) PopN(n uint64) []T {
+	r.bLock.Lock()
+	defer r.bLock.Unlock()
+
 	if r.empty() {
 		return nil
 	}
 
-	r.bLock.Lock()
-	defer r.bLock.Unlock()
-	h, t, l, c := r.h.Load(), r.t.Load(), r.Len(), r.Cap()
+	h, t, l, c := r.h, r.t, r.len(), r.cap
 
 	// check whether buffer is wrapped
 	if t > h {
 		if n > t {
 			// entire buffer will be popped
 			n = t
-			r.h.Swap(0)
-			r.t.Swap(0)
+			r.h = 0
+			r.t = 0
 		} else {
-			r.h.Add(n)
+			r.h += n
 		}
 		v := (*r.buf())[h:n]
 		return makeCopy[T](v)
 	}
 	if n >= l {
 		// entire buffer will be popped
-		r.h.Swap(0)
-		r.t.Swap(0)
+		r.h = 0
+		r.t = 0
 		v := append((*r.buf())[h:c], (*r.buf())[0:t]...)
 		return makeCopy[T](v)
 	}
-	r.h.Add(n)
+	r.h += n
 	n -= c - h
 
 	v := append((*r.buf())[h:c-1], (*r.buf())[0:t-n-1]...)
@@ -140,11 +171,22 @@ func (r *RingBuffer[T]) PopN(n uint64) []T {
 // Returns entire unordered buffer including empty fields.
 // If you only want values ordered (FIFO) use PopN(matt.MaxInt64)
 func (r *RingBuffer[T]) PopAll() []T {
+	r.bLock.Lock()
+	defer r.bLock.Unlock()
+
 	if r.empty() {
 		return nil
 	}
-	r.t.Swap(r.h.Load())
+
+	r.t = r.h
 	return *r.buf()
+}
+
+func (r *RingBuffer[T]) len() uint64 {
+	if r.t >= r.h {
+		return r.t - r.h
+	}
+	return r.cap - r.h + r.t
 }
 
 func (r *RingBuffer[T]) buf() *[]T {
@@ -152,12 +194,24 @@ func (r *RingBuffer[T]) buf() *[]T {
 }
 
 func (r *RingBuffer[T]) empty() bool {
-	return r.h.Load() == r.t.Load()
+	return r.h == r.t
 }
 
 func (r *RingBuffer[T]) full() bool {
 	if r.empty() {
 		return false
 	}
-	return (r.t.Load()+1)&(r.Cap()-1) == r.h.Load()
+	return (r.t+1)&(r.cap-1) == r.h
+}
+
+// checks whether buffer would be full after a batch insert
+func (r *RingBuffer[T]) fullBatch(i uint64) bool {
+	if r.cap-r.len() < i {
+		return true
+	}
+	// NOTE check needs to come here and not before otherwise any putN call to empty buffer will yield false (even if n > cap)
+	if r.empty() {
+		return false
+	}
+	return (r.t+i)&(r.cap-1) == r.h
 }

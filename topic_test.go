@@ -2,14 +2,16 @@ package gomemq
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/chk-n/retry"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTopicAll(t *testing.T) {
-	var tests = []struct {
+	tests := []struct {
 		name              string
 		maxConcurrentMsg  uint
 		maxConcurrentSubs uint
@@ -33,15 +35,125 @@ func TestTopicAll(t *testing.T) {
 
 			go topic.manage()
 
+			var cnt atomic.Int64
 			for i := 0; i < tt.subscriberCount; i++ {
-				topic.Subscribe(mockMessageHandler)
+				topic.Subscribe(func(msg []byte) error {
+					cnt.Add(1)
+					return nil
+				})
 			}
 
 			for i := 0; i < tt.messageCount; i++ {
 				topic.Publish([]byte("test message"))
 			}
 
-			// TODO: add checks here
+			time.Sleep(200 * time.Millisecond)
+
+			assert.Equal(t, tt.subscriberCount*tt.messageCount, int(cnt.Load()))
+		})
+	}
+}
+
+func TestTopicAllPublishDone(t *testing.T) {
+	// tests := []struct {
+	// 	name string
+	// }
+}
+
+func TestTopicAllPublishBatch(t *testing.T) {
+	tests := []struct {
+		name string
+		msgs [][]byte
+	}{
+		{
+			name: "empty",
+			msgs: [][]byte{},
+		},
+		{
+			name: "single",
+			msgs: [][]byte{[]byte("1")},
+		},
+		{
+			name: "multi",
+			msgs: [][]byte{[]byte("1"), []byte("2"), []byte("3")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			topic := newTopicAll(retry.NewDefault(), ConfigTopic{
+				MaxConcurrentMessages:    10,
+				MaxConcurrentSubscribers: 10,
+				MessageTimeout:           10 * time.Second,
+			})
+
+			go topic.manage()
+
+			var cnt int64
+			topic.Subscribe(func(msg []byte) error {
+				atomic.AddInt64(&cnt, 1)
+				return nil
+			})
+
+			topic.PublishBatch(tt.msgs)
+
+			time.Sleep(200 * time.Millisecond)
+
+			assert.Equal(t, len(tt.msgs), int(cnt))
+		})
+	}
+}
+
+func TestTopicAllPublishBatchDone(t *testing.T) {
+	// TODO: add tests for Cancel()
+	tests := []struct {
+		name        string
+		msgs        [][]byte
+		wantTimeout bool
+	}{
+		{
+			name:        "empty",
+			msgs:        [][]byte{},
+			wantTimeout: true,
+		},
+		{
+			name: "single",
+			msgs: [][]byte{[]byte("1")},
+		},
+		{
+			name: "multi",
+			msgs: [][]byte{[]byte("1"), []byte("2"), []byte("3")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			topic := newTopicAll(retry.NewDefault(), ConfigTopic{
+				MaxConcurrentMessages:    10,
+				MaxConcurrentSubscribers: 10,
+				MessageTimeout:           10 * time.Second,
+			})
+
+			go topic.manage()
+
+			var cnt atomic.Int64
+			topic.Subscribe(func(msg []byte) error {
+				cnt.Add(1)
+				return nil
+			})
+
+			ctx := topic.PublishBatchDone(tt.msgs)
+
+			// BUG here with Done; it returns but somehow the cnt is wrong
+			select {
+			case <-ctx.Done():
+				assert.Equal(t, len(tt.msgs), int(cnt.Load()))
+			case <-time.After(500 * time.Millisecond):
+				if !tt.wantTimeout {
+					t.Error("ctx.Done() timedout")
+				}
+
+			}
 		})
 	}
 }

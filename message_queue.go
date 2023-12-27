@@ -13,7 +13,6 @@ type Config struct {
 type ConfigTopic struct {
 	// name of the topic, used to join topics by name
 	Name string
-
 	// Maximum cache size (number of messages) a subscriber can have before old messages get overwritten
 	MaxSubscriberDelayCache uint8
 	// Time duration before subscriber considered timedout
@@ -71,7 +70,7 @@ func (m *messageQueue) Join(topic string) (topic, error) {
 	if t, ok := m.topics[topic]; ok {
 		return t, nil
 	}
-	return nil, fmt.Errorf("%s: topic name empty", errInvalidTopic)
+	return nil, errInvalidTopic
 }
 
 func (m *messageQueue) Subscribe(topic string, handler MessageHandler) error {
