@@ -5,8 +5,9 @@ import "sync/atomic"
 type Context struct {
 	ch      chan any
 	trigger int64
-	cnt     int64
-	cancel  int32
+	// tracks how many times done() was called (lowercase done)
+	cnt    int64
+	cancel int32
 }
 
 func (c *Context) Done() chan any {
