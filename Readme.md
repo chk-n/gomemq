@@ -33,11 +33,11 @@ cfgTopic := gomemq.ConfigTopic{
   // concurrency control
   // other topic configurations
 }
-t,_ := gomemq.NewTopic(cfgTopic)
+t,_ := gomemq.NewTopic[[]byte](cfgTopic)
 
 // publish to topic
 var msg []byte
-t.Publish("", msg)
+t.Publish(msg)
 
 // subscribe to topic
 t.Subscribe(func(b []byte) error {
@@ -45,5 +45,5 @@ t.Subscribe(func(b []byte) error {
 })
 
 // join a topic
-t,_ = mq.Join("")
+t,_ = gomemq.Join("topic")
 ```
