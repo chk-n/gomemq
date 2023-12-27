@@ -16,11 +16,13 @@ type topicAll struct {
 	// dead letter queue contains failed messages
 	dlq     []dlq
 	dlqLock sync.RWMutex
-	retry   retrier
+
+	// Interface to define custom retry policy
+	retry retrier
+
 	// ids to callback to
-	cback        map[string]*Context
-	cbackTrigger map[string]atomic.Int64
-	cbackLock    sync.Mutex
+	cback        *FastMap[string, *Context]
+	cbackTrigger *FastMap[string, atomic.Int64]
 }
 
 func newTopicAll(retry retrier, cfg ConfigTopic) *topicAll {
@@ -30,8 +32,8 @@ func newTopicAll(retry retrier, cfg ConfigTopic) *topicAll {
 		rb:           rb,
 		dlq:          []dlq{},
 		retry:        retry,
-		cback:        make(map[string]*Context),
-		cbackTrigger: make(map[string]atomic.Int64),
+		cback:        NewFM[*Context](),
+		cbackTrigger: NewFM[atomic.Int64](),
 	}
 }
 
@@ -172,8 +174,9 @@ func (t *topicAll) notify(msg message) {
 					return err
 				}
 				// Update context that message was delivered successfully
-				if c, ok := t.cback[msg.id]; ok {
+				if c, ok := t.cback.Get(msg.id); ok {
 					c.done()
+					// BUG memory leak in cback (need to add way to clean map up)
 				}
 				return nil
 			}); err != nil {
@@ -193,7 +196,7 @@ func (t *topicAll) notify(msg message) {
 
 // checks whether a message was cancelled
 func (t *topicAll) isCanceled(msg message) bool {
-	if c, ok := t.cback[msg.id]; ok {
+	if c, ok := t.cback.Get(msg.id); ok {
 		if c.canceled() {
 			return true
 		}
@@ -203,7 +206,5 @@ func (t *topicAll) isCanceled(msg message) bool {
 
 // safely set ctx
 func (t *topicAll) setCtx(id string, ctx *Context) {
-	t.cbackLock.Lock()
-	t.cback[id] = ctx
-	t.cbackLock.Unlock()
+	t.cback.Set(id, ctx)
 }

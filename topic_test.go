@@ -136,9 +136,9 @@ func TestTopicAllPublishBatchDone(t *testing.T) {
 
 			go topic.manage()
 
-			var cnt int64
+			var cnt atomic.Int64
 			topic.Subscribe(func(msg []byte) error {
-				atomic.AddInt64(&cnt, 1)
+				cnt.Add(1)
 				return nil
 			})
 
@@ -146,7 +146,7 @@ func TestTopicAllPublishBatchDone(t *testing.T) {
 
 			select {
 			case <-ctx.Done():
-				assert.Equal(t, len(tt.msgs), int(cnt))
+				assert.Equal(t, len(tt.msgs), int(cnt.Load()))
 			case <-time.After(500 * time.Millisecond):
 				if !tt.wantTimeout {
 					t.Error("ctx.Done() timedout")
