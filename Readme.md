@@ -10,7 +10,7 @@ Lightweight and concurrent in-memory message queue written in golang with zero t
 * Fast and lightweight
 * Zero third party dependencies
 * Publish in batches
-* Publish with 'done' response (once all subscribers successfully processed message(s))
+* Publish with 'done' ack (once all subscribers successfully processed message(s))
 
 ## Get
 
