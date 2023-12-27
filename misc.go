@@ -39,3 +39,8 @@ const (
 	// random subscriber receives message
 	random
 )
+
+type message struct {
+	id   string
+	data []byte
+}

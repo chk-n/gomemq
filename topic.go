@@ -3,27 +3,38 @@ package gomemq
 import (
 	"math"
 	"sync"
+	"sync/atomic"
 )
 
 type topicAll struct {
-	cfg    ConfigTopic
-	subs   map[string]interface{}
+	cfg ConfigTopic
+	// used for duplicate check
+	subs map[string]any
+	// contains all message handlers (i.e. subscribers)
 	hs     []MessageHandler
 	hsLock sync.RWMutex
-	rb     *RingBuffer[[]byte]
+	rb     *RingBuffer[message]
 	// dead letter queue contains failed messages
 	dlq     []dlq
 	dlqLock sync.RWMutex
-	retry   retrier
+
+	// Interface to define custom retry policy
+	retry retrier
+
+	// tracks message id with context so we can notify publisher when subscirber processed message successfully
+	cback        *FastMap[string, *Context]
+	cbackTrigger *FastMap[string, atomic.Int64]
 }
 
 func newTopicAll(retry retrier, cfg ConfigTopic) *topicAll {
-	rb, _ := NewRingBuffer[[]byte](1_024)
+	rb, _ := NewRingBuffer[message](1_024)
 	return &topicAll{
-		cfg:   cfg,
-		rb:    rb,
-		dlq:   []dlq{},
-		retry: retry,
+		cfg:          cfg,
+		rb:           rb,
+		dlq:          []dlq{},
+		retry:        retry,
+		cback:        NewFM[*Context](),
+		cbackTrigger: NewFM[atomic.Int64](),
 	}
 }
 
@@ -33,20 +44,21 @@ func (t *topicAll) manage() {
 	for {
 		msgs := t.rb.PopN(math.MaxInt64)
 		if len(msgs) == 0 {
+			// runtime.Gosched()
 			continue
 		}
 
 		for i := 0; i < len(msgs); i++ {
 			if t.cfg.MaxConcurrentMessages == 1 {
 				t.notify(msgs[i])
-			} else {
-				sem <- struct{}{}
-				i := i
-				go func() {
-					t.notify(msgs[i])
-					<-sem
-				}()
+				continue
 			}
+			sem <- struct{}{}
+			i := i
+			go func() {
+				t.notify(msgs[i])
+				<-sem
+			}()
 		}
 	}
 }
@@ -55,6 +67,9 @@ func (t *topicAll) Subscribe(handler MessageHandler) {
 	if handler == nil {
 		return
 	}
+
+	// BUG not thread safe!
+	// check duplicates
 	ptr := getHandlerPointer(handler)
 	if _, ok := t.subs[ptr]; ok {
 		return
@@ -66,22 +81,110 @@ func (t *topicAll) Subscribe(handler MessageHandler) {
 	t.hs = append(t.hs, handler)
 }
 
+// TODO add way to unsubscribe
+
 func (t *topicAll) Publish(msg []byte) {
-	t.rb.Put(msg)
+	m := makeCopy[byte](msg)
+
+	id, err := generateUid()
+	if err != nil {
+		panic(err)
+	}
+	t.rb.Put(message{
+		id:   id,
+		data: m,
+	})
 }
 
-func (t *topicAll) notify(msg []byte) {
+// Publish with receiving an ackknowledgement
+func (t *topicAll) PublishDone(msg []byte) *Context {
+	m := makeCopy[byte](msg)
+
+	id, err := generateUid()
+	if err != nil {
+		panic(err)
+	}
+	c := &Context{
+		ch:      make(chan any),
+		trigger: 1,
+	}
+	t.cback.Set(id, c)
+
+	t.rb.Put(message{
+		id:   id,
+		data: m,
+	})
+	return c
+}
+
+// Publishes multiple messages to subscribers
+func (t *topicAll) PublishBatch(msgs [][]byte) {
+	id, err := generateUid()
+	if err != nil {
+		panic(err)
+	}
+	t.putN(id, msgs)
+}
+
+// Publish with receiving an ackknowldgement when all msgs in batch processed by subscriber without error
+func (t *topicAll) PublishBatchDone(msgs [][]byte) *Context {
+	id, err := generateUid()
+	if err != nil {
+		panic(err)
+	}
+	c := &Context{
+		ch:      make(chan any),
+		trigger: int64(len(msgs)),
+	}
+	t.cback.Set(id, c)
+
+	t.putN(id, msgs)
+	return c
+}
+
+// Makes copy of data and stores messages in buffer
+func (t *topicAll) putN(id string, msgs [][]byte) {
+	msgsCopy := makeCopy[[]byte](msgs)
+	ms := make([]message, 0, len(msgs))
+	for _, m := range msgsCopy {
+		ms = append(ms, message{
+			id:   id,
+			data: m,
+		})
+	}
+	t.rb.PutN(ms)
+}
+
+// Copy of message passed to notify
+func (t *topicAll) notify(msg message) {
 	sem := make(chan interface{}, t.cfg.MaxConcurrentSubscribers)
-	for i := 0; i < len(t.subs); i++ {
+	for _, h := range t.hs {
+		h := h
+		// If canceled return
+		if t.isCanceled(msg) {
+			return
+		}
+
 		sem <- struct{}{}
-		handler := t.hs[i]
 		go func() {
 			if err := t.retry.DoTimeout(t.cfg.MessageTimeout, func() error {
-				return handler(msg)
+				// If canceled return
+				if t.isCanceled(msg) {
+					return nil
+				}
+				if err := h(msg.data); err != nil {
+					return err
+				}
+				// Update context that message was delivered successfully
+				if c, ok := t.cback.Get(msg.id); ok {
+					c.done()
+					// BUG memory leak in cback (need to add way to clean map up)
+				}
+				return nil
 			}); err != nil {
 				d := dlq{
-					HandlerPtr: getHandlerPointer(handler),
-					Msg:        msg,
+					HandlerPtr: getHandlerPointer(h),
+					Msg:        msg.data,
 					Err:        err,
 				}
 				t.dlqLock.Lock()
@@ -91,4 +194,14 @@ func (t *topicAll) notify(msg []byte) {
 			<-sem
 		}()
 	}
+}
+
+// checks whether a message was cancelled
+func (t *topicAll) isCanceled(msg message) bool {
+	if c, ok := t.cback.Get(msg.id); ok {
+		if c.canceled() {
+			return true
+		}
+	}
+	return false
 }
