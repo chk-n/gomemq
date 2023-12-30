@@ -23,28 +23,44 @@ Lightweight and concurrent in-memory message queue written in golang with zero t
 
 ```go
 
+// Set up message queue
 cfg := gomemq.Config{
   // retrier
 }
 mq := gomemq.New(cfg)
 
-// create topic
+// Create topic
 cfgTopic := gomemq.ConfigTopic{
   // memory consumption
   // concurrency control
   // other topic configurations
 }
-t,_ := gomemq.NewTopic[[]byte](cfgTopic)
+t,_ := gomemq.NewTopic[CustomType](cfgTopic)
 
-// publish to topic
-var msg []byte
+// Publish to topic
+var msg CustomType
 t.Publish(msg)
+// equivalent to gomemq.Publish("topic", msg)
 
-// subscribe to topic
-t.Subscribe(func(b []byte) error {
+// Subscribe to topic
+t.Subscribe(func(msg CustomType) error {
   // handle message asychnronously
 })
 
-// join a topic
+// Join existing topic  
 t,_ = gomemq.Join("topic")
+
+// Batch publish with ACK and DONE acknowledgement
+ctx := gomemq.PublishBatchDone("topic", []CustomType{msg, msg})
+
+select {
+  case <-ctx.Ack():
+    // message was acknowledged
+  case <-ctx.WithAckTimeout(3 * time.Second):
+    // message was not acknowledged within 3 seconds of publishing
+  case <-ctx.WithDoneTimeout(2 * time.Minute):
+    // message was not successfully processed within 2 minutes of ACK
+  case <-ctx.Done():
+    // yay, message was successfully processed
+}
 ```
