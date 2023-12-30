@@ -1,3 +1,5 @@
+// Inspired by https://github.com/orcaman/concurrent-map
+
 package gomemq
 
 import (
