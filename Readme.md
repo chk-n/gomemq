@@ -51,7 +51,7 @@ t.Subscribe(func(msg CustomType) error {
 t,_ = gomemq.Join("topic")
 
 // Batch publish with ACK and DONE acknowledgement
-ctx := gomemq.PublishBatchDone("topic", []CustomType{msg, msg})
+ctx := gomemq.PublishBatchDone[CustomType]("topic", []CustomType{msg, msg})
 
 select {
   case <-ctx.Ack():
