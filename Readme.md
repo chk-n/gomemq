@@ -12,8 +12,8 @@ Lightweight and concurrent in-memory message queue written in golang with zero t
 * Type safe
 * No serialisation
 * Batch publishing
-* Publish with ACK after message receipt by all subscribers
-* Publish with 'done' response after all subscribers successfully processed message(s)
+* Receive ACK after message received by all subscribers
+* Receive 'DONE' after all subscribers successfully processed message(s)
 
 ## Get
 
